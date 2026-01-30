@@ -40,7 +40,7 @@ cpr::Response retry_request(RequestFunc request_func, const char* request_name, 
         if (resp.status_code == 0) {
             printf("[WARN] %s: Network error - %s\n", request_name, resp.error.message.c_str());
         } else if (resp.status_code >= 500) {
-            printf("[wARN] %s: Server error %ld\n", request_name, resp.status_code);
+            printf("[WARN] %s: Server error %ld\n", request_name, resp.status_code);
         } else if (resp.status_code == 429) {
             printf("[WARN] %s: Rate limited (429)\n", request_name);
         }

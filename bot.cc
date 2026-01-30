@@ -3,11 +3,19 @@
 #include <cstdio>
 #include <fstream>
 #include <libtouchstone.h>
+#include <string>
 
 const auto LIBTOUCHSTONE_OPTS =
     libtouchstone::AuthOptions{"cookies.txt", true, true};
 
 const RetryConfig RETRY_CONFIG{.delay_ms = 250, .jitter_ms = 30};
+
+// Default: https://eduapps.mit.edu
+// For testing: http://localhost:8080
+std::string get_base_url() {
+  const char *env_url = std::getenv("PE_BASE_URL");
+  return env_url ? env_url : "https://eduapps.mit.edu";
+}
 
 int main() {
   char *kerb = std::getenv("KERB");
@@ -19,7 +27,9 @@ int main() {
     return 1;
   }
 
-  printf("Initializing bot for %s targeting %s\n", kerb, pe_section_name);
+  std::string base_url = get_base_url();
+  printf("Initializing bot for %s targeting %s (base URL: %s)\n", kerb,
+         pe_section_name, base_url.c_str());
 
   auto session = libtouchstone::session("cookies.txt");
 
@@ -27,7 +37,7 @@ int main() {
 
   printf("Warming up cookies...\n");
   auto warmup_resp = libtouchstone::authenticate(
-      session, "https://eduapps.mit.edu/mitpe/student/registration/home", kerb,
+      session, (base_url + "/mitpe/student/registration/home").c_str(), kerb,
       kerb_password, LIBTOUCHSTONE_OPTS);
 
   if (warmup_resp.status_code != 200 || warmup_resp.error) {
@@ -46,7 +56,7 @@ int main() {
         // authentication.
         return libtouchstone::authenticate(
             session,
-            "https://eduapps.mit.edu/mitpe/student/registration/sectionList",
+            (base_url + "/mitpe/student/registration/sectionList").c_str(),
             std::getenv("KERB"), std::getenv("KERB_PASSWORD"),
             LIBTOUCHSTONE_OPTS);
       },
@@ -69,12 +79,12 @@ int main() {
   std::string section_id = *maybe_section_id;
 
   session.SetUrl(
-      cpr::Url{"https://eduapps.mit.edu/mitpe/student/registration/create"});
+      cpr::Url{base_url + "/mitpe/student/registration/create"});
   session.SetHeader(cpr::Header{
       {"Content-Type", "application/x-www-form-urlencoded"},
-      {"Origin", "https://eduapps.mit.edu"},
+      {"Origin", base_url},
       {"Referer",
-       "https://eduapps.mit.edu/mitpe/student/registration/section?sectionId=" +
+       base_url + "/mitpe/student/registration/section?sectionId=" +
            section_id}});
   session.SetBody(cpr::Body{"sectionId=" + section_id +
                             "&mitId=" + std::getenv("MIT_ID") + "&wf="});
