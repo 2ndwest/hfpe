@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.24)
 project(hfpe CXX)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_FLAGS "-Wall -Wextra")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(FetchContent)
@@ -10,6 +14,30 @@ FetchContent_Declare(cpr GIT_REPOSITORY https://github.com/libcpr/cpr GIT_TAG 1.
 FetchContent_MakeAvailable(libtouchstone json_cpp cpr)
 
 add_executable(bot bot.cc)
+
+enable_testing()
+file(GLOB TEST_FILES "${CMAKE_SOURCE_DIR}/test/*.cc")
+
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/sectionlist_html.h"
+    COMMAND xxd -i "${CMAKE_SOURCE_DIR}/test/sectionlist_resp.html" "${CMAKE_CURRENT_BINARY_DIR}/sectionlist_html.h"
+    DEPENDS "test/sectionlist_resp.html"
+)
+
+foreach(test_src ${TEST_FILES})
+    get_filename_component(test_name ${test_src} NAME_WE)
+    add_executable(${test_name} ${test_src})
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/sectionlist_html.h" PROPERTIES GENERATED TRUE)
+    target_sources(${test_name} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/sectionlist_html.h")
+    target_include_directories(${test_name} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endforeach()
+
+# Convenience target: build + run all tests
+add_custom_target(check
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+    DEPENDS bot
+)
 
 target_link_libraries(bot libtouchstone::libtouchstone json cpr::cpr)
 target_include_directories(bot PRIVATE ${json_cpp_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
