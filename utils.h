@@ -55,6 +55,12 @@ cpr::Response retry_request(RequestFunc request_func, const char* request_name, 
     }
 }
 
+inline std::pair<int, int> minutes_before(int hour, int min, int n) {
+    int total = hour * 60 + min - n;
+    if (total < 0) total += 24 * 60;
+    return {total / 60, total % 60};
+}
+
 // Spin until the target time (target_hour:target_minute) is reached.
 // NOTE: If the target hour has already passed, waits until the next day.
 inline void wait_until_time(int target_hour, int target_minute, const char* message) {

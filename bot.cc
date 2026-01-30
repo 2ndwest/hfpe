@@ -10,11 +10,16 @@ const auto LIBTOUCHSTONE_OPTS =
 
 const RetryConfig RETRY_CONFIG{.delay_ms = 250, .jitter_ms = 30};
 
-// Default: https://eduapps.mit.edu
-// For testing: http://localhost:8080
 std::string get_base_url() {
-  const char *env_url = std::getenv("PE_BASE_URL");
-  return env_url ? env_url : "https://eduapps.mit.edu";
+  const char *url = std::getenv("PE_BASE_URL");
+  return url ? url : "https://eduapps.mit.edu";
+}
+
+std::pair<int, int> get_registration_time() {
+  const char *t = std::getenv("PE_REGISTRATION_TIME");
+  int hour = 8, min = 0;
+  if (t) sscanf(t, "%d:%d", &hour, &min);
+  return {hour, min};
 }
 
 int main() {
@@ -28,25 +33,23 @@ int main() {
   }
 
   std::string base_url = get_base_url();
-  printf("Initializing bot for %s targeting %s (base URL: %s)\n", kerb,
-         pe_section_name, base_url.c_str());
+  auto [reg_hour, reg_min] = get_registration_time();
+  auto [warmup_hour, warmup_min] = minutes_before(reg_hour, reg_min, 5);
 
+  printf("Initializing bot for %s targeting %s\n", kerb, pe_section_name);
   auto session = libtouchstone::session("cookies.txt");
 
-  wait_until_time(7, 55, "Waiting for 7:55am...");
-
+  wait_until_time(warmup_hour, warmup_min, "Waiting for warmup...");
   printf("Warming up cookies...\n");
   auto warmup_resp = libtouchstone::authenticate(
       session, (base_url + "/mitpe/student/registration/home").c_str(), kerb,
       kerb_password, LIBTOUCHSTONE_OPTS);
-
   if (warmup_resp.status_code != 200 || warmup_resp.error) {
-    fprintf(stderr,
-            "[WARN] Cookie warmup returned status %ld and had error code %d\n",
+    fprintf(stderr, "[WARN] Cookie warmup failed: status %ld, error %d\n",
             warmup_resp.status_code, static_cast<int>(warmup_resp.error.code));
   }
 
-  wait_until_time(8, 0, "Waiting for 8am...");
+  wait_until_time(reg_hour, reg_min, "Waiting for registration...");
 
   auto section_list_resp = retry_request(
       [&]() {
