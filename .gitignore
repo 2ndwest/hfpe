@@ -3,6 +3,7 @@ cookies.txt
 .claude/
 .cache/
 build/
+build-release/
 .env
 *.db
 
