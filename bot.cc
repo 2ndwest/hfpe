@@ -43,7 +43,7 @@ int main() {
   setenv("TZ", "America/New_York", 1);
   tzset();
 
-  wait_until_time(7, 55, "Waiting for 7:55am...");
+  wait_until_time(warmup_hour, warmup_min, "Waiting for warmup...");
 
   printf("Warming up cookies...\n");
   auto warmup_resp = libtouchstone::authenticate(
