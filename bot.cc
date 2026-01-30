@@ -38,6 +38,7 @@ int main() {
 
   printf("Initializing bot for %s targeting %s\n", kerb, pe_section_name);
   auto session = libtouchstone::session("cookies.txt");
+  session.SetTimeout(cpr::Timeout{10000}); // 10 second timeout
 
   // Set environment to Eastern Time
   setenv("TZ", "America/New_York", 1);
