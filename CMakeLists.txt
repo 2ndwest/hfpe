@@ -18,18 +18,10 @@ add_executable(bot bot.cc)
 enable_testing()
 file(GLOB TEST_FILES "${CMAKE_SOURCE_DIR}/test/*.cc")
 
-add_custom_command(
-    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/sectionlist_html.h"
-    COMMAND xxd -i "${CMAKE_SOURCE_DIR}/test/sectionlist_resp.html" "${CMAKE_CURRENT_BINARY_DIR}/sectionlist_html.h"
-    DEPENDS "test/sectionlist_resp.html"
-)
-
 foreach(test_src ${TEST_FILES})
     get_filename_component(test_name ${test_src} NAME_WE)
     add_executable(${test_name} ${test_src})
-    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/sectionlist_html.h" PROPERTIES GENERATED TRUE)
-    target_sources(${test_name} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/sectionlist_html.h")
-    target_include_directories(${test_name} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+    target_include_directories(${test_name} PRIVATE "${CMAKE_SOURCE_DIR}")
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
 
