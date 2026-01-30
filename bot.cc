@@ -2,12 +2,9 @@
 #include <cstdio>
 #include "utils.h"
 
-const auto opts = libtouchstone::AuthOptions{"cookies.txt", true, true};
+const auto LIBTOUCHSTONE_OPTS = libtouchstone::AuthOptions{"cookies.txt", true, true};
 
-const RetryConfig AGGRESSIVE_RETRY{
-    .delay_ms = 250,
-    .jitter_ms = 30
-};
+const RetryConfig RETRY_CONFIG{.delay_ms = 250, .jitter_ms = 30};
 
 int main() {
     if (!std::getenv("KERB") || !std::getenv("KERB_PASSWORD") || !std::getenv("MIT_ID")) {
@@ -22,7 +19,7 @@ int main() {
     printf("Warming up cookies...\n");
     auto warmup_resp = libtouchstone::authenticate(session,
         "https://eduapps.mit.edu/mitpe/student/registration/home",
-        std::getenv("KERB"), std::getenv("KERB_PASSWORD"), opts
+        std::getenv("KERB"), std::getenv("KERB_PASSWORD"), LIBTOUCHSTONE_OPTS
     );
 
     if (warmup_resp.status_code != 200 || warmup_resp.error) {
@@ -39,9 +36,9 @@ int main() {
         // subsequent requests shouldn't require authentication.
         return libtouchstone::authenticate(session,
             "https://eduapps.mit.edu/mitpe/student/registration/sectionList",
-            std::getenv("KERB"), std::getenv("KERB_PASSWORD"), opts
+            std::getenv("KERB"), std::getenv("KERB_PASSWORD"), LIBTOUCHSTONE_OPTS
         );
-    }, "FETCH_SECTION_LIST", AGGRESSIVE_RETRY);
+    }, "FETCH_SECTION_LIST", RETRY_CONFIG);
 
     // TODO parse
     std::string section_id;
@@ -56,7 +53,7 @@ int main() {
 
     auto register_resp = retry_request([&]() {
         return session.Post();
-    }, "SUBMIT_REGISTRATION", AGGRESSIVE_RETRY);
+    }, "SUBMIT_REGISTRATION", RETRY_CONFIG);
 
 
     printf("Success (status %ld)! Response:\n%s\n", register_resp.status_code, register_resp.text.c_str());
