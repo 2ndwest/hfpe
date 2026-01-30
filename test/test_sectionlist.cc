@@ -15,4 +15,5 @@ int main(void) {
          "07A060AB12092FD100000199C5B0B3B0");
   assert(find_section_id(sectionlist_html, "PE.0626-2") ==
          "2C7EB43712092FD100000199C5B0B3C8");
+  assert(find_section_id(sectionlist_html, "PE.9999-0") == std::nullopt);
 }
