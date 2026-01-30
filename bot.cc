@@ -33,6 +33,10 @@ int main() {
 
   auto session = libtouchstone::session("cookies.txt");
 
+  // Set environment to Eastern Time
+  setenv("TZ", "America/New_York", 1);
+  tzset();
+
   wait_until_time(7, 55, "Waiting for 7:55am...");
 
   printf("Warming up cookies...\n");
