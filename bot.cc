@@ -5,8 +5,10 @@
 #include <libtouchstone.h>
 #include <string>
 
+const char* COOKIE_FILE = "cookies.txt";
+
 const auto LIBTOUCHSTONE_OPTS =
-    libtouchstone::AuthOptions{"cookies.txt", true, true};
+    libtouchstone::AuthOptions{COOKIE_FILE, true, true};
 
 const RetryConfig RETRY_CONFIG{.delay_ms = 250, .jitter_ms = 30};
 
@@ -37,23 +39,27 @@ int main() {
   auto [warmup_hour, warmup_min] = minutes_before(reg_hour, reg_min, 5);
 
   printf("Initializing bot for %s targeting %s\n", kerb, pe_section_name);
-  auto session = libtouchstone::session("cookies.txt");
-  session.SetTimeout(cpr::Timeout{10000}); // 10 second timeout
 
   // Set environment to Eastern Time
   setenv("TZ", "America/New_York", 1);
   tzset();
 
   printf("Verifying credentials...\n");
-  auto init_resp = libtouchstone::authenticate(
-      session, (base_url + "/mitpe/student/registration/home").c_str(), kerb,
-      kerb_password, LIBTOUCHSTONE_OPTS);
-  if (init_resp.status_code != 200 || init_resp.error) {
-    fprintf(stderr, "[ERROR] Initial auth failed: status %ld, error: %s\n",
-            init_resp.status_code, init_resp.error.message.c_str());
-    return 1;
-  }
+  {
+    auto init_session = libtouchstone::session(COOKIE_FILE);
+    auto init_resp = libtouchstone::authenticate(
+        init_session, (base_url + "/mitpe/student/registration/home").c_str(),
+        kerb, kerb_password, LIBTOUCHSTONE_OPTS);
+    if (init_resp.status_code != 200 || init_resp.error) {
+      fprintf(stderr, "[ERROR] Initial auth failed: status %ld, error: %s\n",
+              init_resp.status_code, init_resp.error.message.c_str());
+      return 1;
+    }
+  } // init_session goes out of scope, saving cookies to cookies.txt
   printf("[INFO] Credentials OK.\n");
+
+  auto session = libtouchstone::session(COOKIE_FILE);
+  session.SetTimeout(cpr::Timeout{10000}); // 10 second timeout
 
   wait_until_time(warmup_hour, warmup_min, "Waiting for warmup...");
 
