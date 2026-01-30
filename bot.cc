@@ -52,10 +52,18 @@ int main() {
       },
       "FETCH_SECTION_LIST", RETRY_CONFIG);
 
+  std::string section_list_html = section_list_resp.text;
   auto maybe_section_id =
-      find_section_id(section_list_resp.text, std::string(pe_section_name));
+      find_section_id(section_list_html, std::string(pe_section_name));
   if (!maybe_section_id) {
     fprintf(stderr, "Failed to find section name in section list response!\n");
+    std::ofstream file("sectionlist_resp.html");
+    if (file.is_open()) {
+      file << section_list_html;
+      file.close();
+    } else {
+      fprintf(stderr, "Failed to open sectionlist_resp.html");
+    }
     return 1;
   }
   std::string section_id = *maybe_section_id;
