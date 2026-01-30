@@ -39,7 +39,12 @@ int main() {
   printf("Initializing bot for %s targeting %s\n", kerb, pe_section_name);
   auto session = libtouchstone::session("cookies.txt");
 
-  wait_until_time(warmup_hour, warmup_min, "Waiting for warmup...");
+  // Set environment to Eastern Time
+  setenv("TZ", "America/New_York", 1);
+  tzset();
+
+  wait_until_time(7, 55, "Waiting for 7:55am...");
+
   printf("Warming up cookies...\n");
   auto warmup_resp = libtouchstone::authenticate(
       session, (base_url + "/mitpe/student/registration/home").c_str(), kerb,
