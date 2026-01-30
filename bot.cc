@@ -34,6 +34,9 @@ int main() {
     wait_until_time(8, 0, "Waiting for 8am...");
 
     auto section_list_resp = retry_request([&]() {
+        // We do an authenticate call here just in case the cookies somehow went stale
+        // in the meantime or another SSO redirect is needed for some reason. After this,
+        // subsequent requests shouldn't require authentication.
         return libtouchstone::authenticate(session,
             "https://eduapps.mit.edu/mitpe/student/registration/sectionList",
             std::getenv("KERB"), std::getenv("KERB_PASSWORD"), opts
