@@ -11,4 +11,8 @@ int main(void) {
 
   assert(find_section_id(sectionlist_html, "PE.0720-1") ==
          "CB80ED8E12092FD100000199C5B0B3DD");
+  assert(find_section_id(sectionlist_html, "PE.0800-1 ") ==
+         "07A060AB12092FD100000199C5B0B3B0");
+  assert(find_section_id(sectionlist_html, "PE.0626-2") ==
+         "2C7EB43712092FD100000199C5B0B3C8");
 }
