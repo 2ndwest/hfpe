@@ -43,6 +43,17 @@ int main() {
   setenv("TZ", "America/New_York", 1);
   tzset();
 
+  printf("Verifying credentials...\n");
+  auto init_resp = libtouchstone::authenticate(
+      session, (base_url + "/mitpe/student/registration/home").c_str(), kerb,
+      kerb_password, LIBTOUCHSTONE_OPTS);
+  if (init_resp.status_code != 200 || init_resp.error) {
+    fprintf(stderr, "[ERROR] Initial auth failed: status %ld, error %d\n",
+            init_resp.status_code, static_cast<int>(init_resp.error.code));
+    return 1;
+  }
+  printf("[INFO] Credentials OK.\n");
+
   wait_until_time(warmup_hour, warmup_min, "Waiting for warmup...");
 
   printf("Warming up cookies...\n");
