@@ -16,6 +16,9 @@ std::optional<std::string> find_section_id(std::string sectionlist_html,
     return std::nullopt;
   }
 
+  // Skip past "sectionId=" prefix
+  secid_start += 10;
+
   size_t secid_end = sectionlist_html.find("\"", secid_start);
   if (secid_end == std::string::npos || secid_end >= secname_pos) {
     return std::nullopt;
