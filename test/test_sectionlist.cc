@@ -1,4 +1,4 @@
-#include "sectionlist.hpp"
+#include "sectionlist.h"
 #include <cassert>
 #include <fstream>
 #include <sstream>

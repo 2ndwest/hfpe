@@ -1,11 +1,12 @@
-#include "sectionlist.hpp"
+#pragma once
+
 #include <optional>
 #include <string>
 
 // https://eduapps.mit.edu/mitpe/student/registration/sectionList
 
-std::optional<std::string> find_section_id(std::string sectionlist_html,
-                                           std::string section_name) {
+inline std::optional<std::string> find_section_id(std::string sectionlist_html,
+                                                  std::string section_name) {
   size_t secname_pos = sectionlist_html.find(section_name);
   if (secname_pos == std::string::npos) {
     return std::nullopt;

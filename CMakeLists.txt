@@ -20,7 +20,7 @@ file(GLOB TEST_FILES "${CMAKE_SOURCE_DIR}/test/*.cc")
 
 foreach(test_src ${TEST_FILES})
     get_filename_component(test_name ${test_src} NAME_WE)
-    add_executable(${test_name} ${test_src} sectionlist.cc)
+    add_executable(${test_name} ${test_src})
     target_include_directories(${test_name} PRIVATE "${CMAKE_SOURCE_DIR}")
     add_test(NAME ${test_name} COMMAND ${test_name} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
