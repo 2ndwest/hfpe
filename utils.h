@@ -68,7 +68,9 @@ inline void wait_until_time(int target_hour, int target_minute, const char* mess
         time_t now = time(nullptr);
         struct tm* local = localtime(&now);
         if (local->tm_hour == target_hour && local->tm_min >= target_minute) break;
-        printf("%s (current time: %02d:%02d:%02d)\n", message, local->tm_hour, local->tm_min, local->tm_sec);
+        printf("%s (target: %02d:%02d, now: %02d:%02d:%02d)\n",
+               message, target_hour, target_minute,
+               local->tm_hour, local->tm_min, local->tm_sec);
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 }
