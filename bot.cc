@@ -49,8 +49,8 @@ int main() {
       session, (base_url + "/mitpe/student/registration/home").c_str(), kerb,
       kerb_password, LIBTOUCHSTONE_OPTS);
   if (init_resp.status_code != 200 || init_resp.error) {
-    fprintf(stderr, "[ERROR] Initial auth failed: status %ld, error %d\n",
-            init_resp.status_code, static_cast<int>(init_resp.error.code));
+    fprintf(stderr, "[ERROR] Initial auth failed: status %ld, error: %s\n",
+            init_resp.status_code, init_resp.error.message.c_str());
     return 1;
   }
   printf("[INFO] Credentials OK.\n");
