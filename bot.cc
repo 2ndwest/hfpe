@@ -5,8 +5,8 @@
 const char* COOKIE_FILE = "cookies.txt";
 
 int main() {
-    if (!std::getenv("KERB") || !std::getenv("KERB_PASSWORD")) {
-        printf("KERB and KERB_PASSWORD must be set\n");
+    if (!std::getenv("KERB") || !std::getenv("KERB_PASSWORD") || !std::getenv("MIT_ID")) {
+        printf("Some key environment variables are not set!\n");
         return 1;
     }
 
@@ -33,6 +33,20 @@ int main() {
         {COOKIE_FILE, true, true}
     );
 
-    printf("Got %zu bytes from %s\n%s\n", section_list_resp.text.size(), section_list_resp.url.str().c_str(), section_list_resp.text.c_str());
+    // TODO parse
+    std::string section_id;
+
+    session.SetUrl(cpr::Url{"https://eduapps.mit.edu/mitpe/student/registration/create"});
+    session.SetHeader(cpr::Header{
+        {"Content-Type", "application/x-www-form-urlencoded"},
+        {"Origin", "https://eduapps.mit.edu"},
+        {"Referer", "https://eduapps.mit.edu/mitpe/student/registration/section?sectionId=" + section_id}
+    });
+    session.SetBody(cpr::Body{"sectionId=" + section_id + "&mitId=" + std::getenv("MIT_ID") + "&wf="});
+    auto register_resp = session.Post();
+
+    printf("Registration response: %ld\n", register_resp.status_code);
+    printf("%s\n", register_resp.text.c_str());
+
     return 0;
 }
