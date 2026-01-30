@@ -30,7 +30,7 @@ cpr::Response retry_request(RequestFunc request_func, const char* request_name, 
     while (true) {
         if (attempt > 0) {
             int delay = calculate_delay(config);
-            printf("[Retry] %s: Attempt %d after %dms delay...\n",
+            printf("[INFO] %s: Attempt %d after %dms delay...\n",
                    request_name, attempt + 1, delay);
             std::this_thread::sleep_for(std::chrono::milliseconds(delay));
         }
@@ -38,18 +38,16 @@ cpr::Response retry_request(RequestFunc request_func, const char* request_name, 
         resp = request_func();
 
         if (resp.status_code == 0) {
-            printf("[Retry] %s: Network error - %s\n", request_name, resp.error.message.c_str());
+            printf("[WARN] %s: Network error - %s\n", request_name, resp.error.message.c_str());
         } else if (resp.status_code >= 500) {
-            printf("[Retry] %s: Server error %ld\n", request_name, resp.status_code);
+            printf("[wARN] %s: Server error %ld\n", request_name, resp.status_code);
         } else if (resp.status_code == 429) {
-            printf("[Retry] %s: Rate limited (429)\n", request_name);
+            printf("[WARN] %s: Rate limited (429)\n", request_name);
         }
 
-        if (resp.error.code == cpr::ErrorCode::OK && resp.status_code >= 200 && resp.status_code < 300) {
-            if (attempt > 0) {
-                printf("[Retry] %s: Succeeded on attempt %d with status %ld\n",
-                       request_name, attempt + 1, resp.status_code);
-            }
+        if (!resp.error && resp.status_code == 200) {
+            if (attempt > 0) printf("[INFO] %s: Succeeded on attempt %d with status %ld\n", request_name, attempt + 1, resp.status_code);
+            else printf("[INFO] %s: Succeeded on first attempt with status %ld\n", request_name, resp.status_code);
             return resp;
         }
 
