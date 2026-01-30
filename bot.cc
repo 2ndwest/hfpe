@@ -2,7 +2,7 @@
 #include <cstdio>
 #include "utils.h"
 
-const char* COOKIE_FILE = "cookies.txt";
+const auto opts = libtouchstone::AuthOptions{"cookies.txt", true, true};
 
 int main() {
     if (!std::getenv("KERB") || !std::getenv("KERB_PASSWORD") || !std::getenv("MIT_ID")) {
@@ -15,22 +15,16 @@ int main() {
     wait_until_time(7, 59, "Waiting for 7:58am...");
 
     printf("Warming up cookies...\n");
-    libtouchstone::authenticate(
-        session,
+    libtouchstone::authenticate(session,
         "https://eduapps.mit.edu/mitpe/student/registration/home",
-        std::getenv("KERB"),
-        std::getenv("KERB_PASSWORD"),
-        {COOKIE_FILE, true, true}
+        std::getenv("KERB"), std::getenv("KERB_PASSWORD"), opts
     );
 
     wait_until_time(8, 0, "Waiting for 8am...");
 
-    auto section_list_resp = libtouchstone::authenticate(
-        session,
+    auto section_list_resp = libtouchstone::authenticate(session,
         "https://eduapps.mit.edu/mitpe/student/registration/sectionList",
-        std::getenv("KERB"),
-        std::getenv("KERB_PASSWORD"),
-        {COOKIE_FILE, true, true}
+        std::getenv("KERB"), std::getenv("KERB_PASSWORD"), opts
     );
 
     // TODO parse
