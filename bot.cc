@@ -1,5 +1,7 @@
+#include "sectionlist.h"
 #include "utils.h"
 #include <cstdio>
+#include <fstream>
 #include <libtouchstone.h>
 
 const auto LIBTOUCHSTONE_OPTS =
@@ -25,12 +27,13 @@ int main() {
 
   printf("Warming up cookies...\n");
   auto warmup_resp = libtouchstone::authenticate(
-      session, "https://eduapps.mit.edu/mitpe/student/registration/home",
-      std::getenv("KERB"), std::getenv("KERB_PASSWORD"), LIBTOUCHSTONE_OPTS);
+      session, "https://eduapps.mit.edu/mitpe/student/registration/home", kerb,
+      kerb_password, LIBTOUCHSTONE_OPTS);
 
   if (warmup_resp.status_code != 200 || warmup_resp.error) {
-    printf("[WARN] Cookie warmup returned status %ld and had error code %d\n",
-           warmup_resp.status_code, static_cast<int>(warmup_resp.error.code));
+    fprintf(stderr,
+            "[WARN] Cookie warmup returned status %ld and had error code %d\n",
+            warmup_resp.status_code, static_cast<int>(warmup_resp.error.code));
   }
 
   wait_until_time(8, 0, "Waiting for 8am...");
@@ -49,8 +52,13 @@ int main() {
       },
       "FETCH_SECTION_LIST", RETRY_CONFIG);
 
-  // TODO parse
-  std::string section_id;
+  auto maybe_section_id =
+      find_section_id(section_list_resp.text, std::string(pe_section_name));
+  if (!maybe_section_id) {
+    fprintf(stderr, "Failed to find section name in section list response!\n");
+    return 1;
+  }
+  std::string section_id = *maybe_section_id;
 
   session.SetUrl(
       cpr::Url{"https://eduapps.mit.edu/mitpe/student/registration/create"});
