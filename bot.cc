@@ -39,7 +39,7 @@ int main() {
   char *mit_id = std::getenv("MIT_ID");
   char *pe_section_name = std::getenv("PE_SECTION_NAME");
   if (!kerb || !kerb_password || !mit_id || !pe_section_name) {
-    printf("[ERROR] Some key environment variables are not set!\n");
+    tlog("[ERROR] Some key environment variables are not set!\n");
     return 1;
   }
 
@@ -48,42 +48,55 @@ int main() {
   auto [warmup_hour, warmup_min] = minutes_before(reg_hour, reg_min, 5);
   int num_threads = NUM_THREADS;
 
-  printf("Initializing bot for %s targeting %s (%d threads, %ds timeout)\n",
-         kerb, pe_section_name, num_threads, TIMEOUT_MS / 1000);
+  tlog("Initializing bot for %s targeting %s (%d threads, %ds timeout)\n",
+       kerb, pe_section_name, num_threads, TIMEOUT_MS / 1000);
+  tlog("Base URL: %s\n", base_url.c_str());
+  tlog("Registration time: %02d:%02d, Warmup time: %02d:%02d\n", reg_hour,
+       reg_min, warmup_hour, warmup_min);
 
   // Set environment to Eastern Time
   setenv("TZ", "America/New_York", 1);
   tzset();
 
-  printf("Verifying credentials...\n");
+  tlog("Verifying credentials...\n");
   {
+    long long auth_start = now_ms();
     auto init_session = libtouchstone::session(COOKIE_FILE);
     auto init_resp = libtouchstone::authenticate(
         init_session, (base_url + "/mitpe/student/registration/home").c_str(),
         kerb, kerb_password, LIBTOUCHSTONE_OPTS);
     if (init_resp.status_code != 200 || init_resp.error) {
-      fprintf(stderr, "[ERROR] Initial auth failed: status %ld, error: %s\n",
-              init_resp.status_code, init_resp.error.message.c_str());
+      tlog("[ERROR] Initial auth failed: status %ld, error: %s (%lldms)\n",
+           init_resp.status_code, init_resp.error.message.c_str(),
+           now_ms() - auth_start);
       return 1;
     }
+    tlog("[INFO] Credentials OK (%lldms)\n", now_ms() - auth_start);
   } // init_session goes out of scope, saving cookies to cookies.txt
-  printf("[INFO] Credentials OK.\n");
 
   auto session = libtouchstone::session(COOKIE_FILE);
   session.SetTimeout(cpr::Timeout{TIMEOUT_MS});
 
   wait_until_time(warmup_hour, warmup_min, "Waiting for warmup...");
 
-  printf("Warming up cookies...\n");
-  auto warmup_resp = libtouchstone::authenticate(
-      session, (base_url + "/mitpe/student/registration/home").c_str(), kerb,
-      kerb_password, LIBTOUCHSTONE_OPTS);
-  if (warmup_resp.status_code != 200 || warmup_resp.error) {
-    fprintf(stderr, "[WARN] Cookie warmup failed: status %ld, error %d\n",
-            warmup_resp.status_code, static_cast<int>(warmup_resp.error.code));
+  tlog("Warming up cookies...\n");
+  {
+    long long warmup_start = now_ms();
+    auto warmup_resp = libtouchstone::authenticate(
+        session, (base_url + "/mitpe/student/registration/home").c_str(), kerb,
+        kerb_password, LIBTOUCHSTONE_OPTS);
+    if (warmup_resp.status_code != 200 || warmup_resp.error) {
+      tlog("[WARN] Cookie warmup failed: status %ld, error %d (%lldms)\n",
+           warmup_resp.status_code, static_cast<int>(warmup_resp.error.code),
+           now_ms() - warmup_start);
+    } else {
+      tlog("[INFO] Cookie warmup OK (%lldms)\n", now_ms() - warmup_start);
+    }
   }
 
   wait_until_time(reg_hour, reg_min, "Waiting for registration...");
+
+  long long race_start = now_ms();
 
   // --- Shared state for worker threads ---
   std::atomic<bool> got_section_id{false};
@@ -103,6 +116,9 @@ int main() {
   auto worker = [&](int tid) {
     char tag[16];
     snprintf(tag, sizeof(tag), "T%d", tid);
+    long long thread_start = now_ms();
+
+    tlog("[%s] Thread started\n", tag);
 
     // Each thread gets its own session (own CURL handle + cookies)
     auto tsession = libtouchstone::session(COOKIE_FILE);
@@ -124,16 +140,19 @@ int main() {
     // If we got a good response and nobody else found the ID yet, extract it
     if (!got_section_id.load() && !section_resp.error &&
         section_resp.status_code == 200) {
-      auto maybe_id =
-          find_section_id(section_resp.text, s_pe_section_name);
+      auto maybe_id = find_section_id(section_resp.text, s_pe_section_name);
       if (maybe_id) {
         std::lock_guard<std::mutex> lock(section_id_mutex);
         if (!got_section_id.load()) {
           shared_section_id = *maybe_id;
           got_section_id.store(true);
-          printf("[%s] Found section ID: %s\n", tag,
-                 shared_section_id.c_str());
+          tlog("[%s] Found section ID: %s (%lldms since launch)\n", tag,
+               shared_section_id.c_str(), now_ms() - race_start);
         }
+      } else {
+        tlog("[WARN] [%s] Got 200 but section name '%s' not found in HTML "
+             "(%zu bytes)\n",
+             tag, s_pe_section_name.c_str(), section_resp.text.size());
       }
     }
 
@@ -147,6 +166,9 @@ int main() {
       std::lock_guard<std::mutex> lock(section_id_mutex);
       section_id = shared_section_id;
     }
+
+    tlog("[%s] Starting registration POST for section %s\n", tag,
+         section_id.c_str());
 
     // Phase 2: Submit registration
     tsession.SetUrl(
@@ -172,12 +194,16 @@ int main() {
       if (!registered.load()) {
         registered.store(true);
         registration_response = reg_resp.text;
-        printf("[%s] REGISTERED!\n", tag);
+        tlog("[%s] REGISTERED! (%lldms since launch)\n", tag,
+             now_ms() - race_start);
       }
     }
+
+    tlog("[%s] Thread exiting (%lldms lifetime)\n", tag,
+         now_ms() - thread_start);
   };
 
-  printf("[INFO] Launching %d threads...\n", num_threads);
+  tlog("[INFO] Launching %d threads...\n", num_threads);
 
   std::vector<std::thread> threads;
   for (int i = 0; i < num_threads; i++) {
@@ -187,13 +213,16 @@ int main() {
     t.join();
   }
 
+  tlog("[INFO] All threads joined (%lldms total race time)\n",
+       now_ms() - race_start);
+
   if (registered.load()) {
-    printf("\nRegistration successful! Response:\n%s\n",
-           registration_response.c_str());
+    tlog("\nRegistration successful! Response:\n%s\n",
+         registration_response.c_str());
     return 0;
   }
 
   // This shouldn't happen since threads retry forever, but just in case
-  fprintf(stderr, "\nAll threads exited without successful registration.\n");
+  tlog("\n[ERROR] All threads exited without successful registration.\n");
   return 1;
 }
