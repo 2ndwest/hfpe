@@ -74,16 +74,16 @@ int main() {
     tlog("[INFO] Credentials OK (%lldms)\n", now_ms() - auth_start);
   } // init_session goes out of scope, saving cookies to cookies.txt
 
-  auto session = libtouchstone::session(COOKIE_FILE);
-  session.SetTimeout(cpr::Timeout{TIMEOUT_MS});
 
   wait_until_time(warmup_hour, warmup_min, "Waiting for warmup...");
 
   tlog("Warming up cookies...\n");
   {
+    auto warmup_session = libtouchstone::session(COOKIE_FILE);
+    warmup_session.SetTimeout(cpr::Timeout{TIMEOUT_MS});
     long long warmup_start = now_ms();
     auto warmup_resp = libtouchstone::authenticate(
-        session, (base_url + "/mitpe/student/registration/home").c_str(), kerb,
+        warmup_session, (base_url + "/mitpe/student/registration/home").c_str(), kerb,
         kerb_password, LIBTOUCHSTONE_OPTS);
     if (warmup_resp.status_code != 200 || warmup_resp.error) {
       tlog("[WARN] Cookie warmup failed: status %ld, error %d (%lldms)\n",
@@ -92,7 +92,7 @@ int main() {
     } else {
       tlog("[INFO] Cookie warmup OK (%lldms)\n", now_ms() - warmup_start);
     }
-  }
+  } // warmup_session goes out of scope, saving cookies to cookies.txt
 
   wait_until_time(reg_hour, reg_min, "Waiting for registration...");
 
