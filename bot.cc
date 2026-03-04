@@ -1,16 +1,24 @@
 #include "sectionlist.h"
 #include "utils.h"
+#include <atomic>
 #include <cstdio>
-#include <fstream>
 #include <libtouchstone.h>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
-const char* COOKIE_FILE = "cookies.txt";
+const char *COOKIE_FILE = "cookies.txt";
 
 const auto LIBTOUCHSTONE_OPTS =
     libtouchstone::AuthOptions{COOKIE_FILE, true, true};
 
-const RetryConfig RETRY_CONFIG{.delay_ms = 250, .jitter_ms = 30};
+// No delay between retries — long timeout keeps us in the TCP queue.
+// Retry immediately only if the server actively rejects us.
+const RetryConfig THREADED_RETRY{.delay_ms = 0, .jitter_ms = 0};
+
+const int TIMEOUT_MS = 120000; // 120 seconds — stay in the TCP buffer
+const int NUM_THREADS = 16;
 
 std::string get_base_url() {
   const char *url = std::getenv("PE_BASE_URL");
@@ -20,7 +28,8 @@ std::string get_base_url() {
 std::pair<int, int> get_registration_time() {
   const char *t = std::getenv("PE_REGISTRATION_TIME");
   int hour = 8, min = 0;
-  if (t) sscanf(t, "%d:%d", &hour, &min);
+  if (t)
+    sscanf(t, "%d:%d", &hour, &min);
   return {hour, min};
 }
 
@@ -37,8 +46,10 @@ int main() {
   std::string base_url = get_base_url();
   auto [reg_hour, reg_min] = get_registration_time();
   auto [warmup_hour, warmup_min] = minutes_before(reg_hour, reg_min, 5);
+  int num_threads = NUM_THREADS;
 
-  printf("Initializing bot for %s targeting %s\n", kerb, pe_section_name);
+  printf("Initializing bot for %s targeting %s (%d threads, %ds timeout)\n",
+         kerb, pe_section_name, num_threads, TIMEOUT_MS / 1000);
 
   // Set environment to Eastern Time
   setenv("TZ", "America/New_York", 1);
@@ -59,7 +70,7 @@ int main() {
   printf("[INFO] Credentials OK.\n");
 
   auto session = libtouchstone::session(COOKIE_FILE);
-  session.SetTimeout(cpr::Timeout{10000}); // 10 second timeout
+  session.SetTimeout(cpr::Timeout{TIMEOUT_MS});
 
   wait_until_time(warmup_hour, warmup_min, "Waiting for warmup...");
 
@@ -74,52 +85,115 @@ int main() {
 
   wait_until_time(reg_hour, reg_min, "Waiting for registration...");
 
-  auto section_list_resp = retry_request(
-      [&]() {
-        // We do an authenticate call here just in case the cookies somehow went
-        // stale in the meantime or another SSO redirect is needed for some
-        // reason. After this, subsequent requests shouldn't require
-        // authentication.
-        return libtouchstone::authenticate(
-            session,
-            (base_url + "/mitpe/student/registration/sectionList").c_str(),
-            std::getenv("KERB"), std::getenv("KERB_PASSWORD"),
-            LIBTOUCHSTONE_OPTS);
-      },
-      "FETCH_SECTION_LIST", RETRY_CONFIG);
+  // --- Shared state for worker threads ---
+  std::atomic<bool> got_section_id{false};
+  std::string shared_section_id;
+  std::mutex section_id_mutex;
 
-  std::string section_list_html = section_list_resp.text;
-  auto maybe_section_id =
-      find_section_id(section_list_html, std::string(pe_section_name));
-  if (!maybe_section_id) {
-    fprintf(stderr, "Failed to find section name in section list response!\n");
-    std::ofstream file("sectionlist_resp.html");
-    if (file.is_open()) {
-      file << section_list_html;
-      file.close();
-    } else {
-      fprintf(stderr, "Failed to open sectionlist_resp.html");
+  std::atomic<bool> registered{false};
+  std::string registration_response;
+  std::mutex registration_mutex;
+
+  // Copy env vars into std::strings so threads don't race on getenv
+  std::string s_kerb = kerb;
+  std::string s_kerb_password = kerb_password;
+  std::string s_mit_id = mit_id;
+  std::string s_pe_section_name = pe_section_name;
+
+  auto worker = [&](int tid) {
+    char tag[16];
+    snprintf(tag, sizeof(tag), "T%d", tid);
+
+    // Each thread gets its own session (own CURL handle + cookies)
+    auto tsession = libtouchstone::session(COOKIE_FILE);
+    tsession.SetTimeout(cpr::Timeout{TIMEOUT_MS});
+
+    // Phase 1: Fetch section list
+    char fetch_tag[32];
+    snprintf(fetch_tag, sizeof(fetch_tag), "T%d_FETCH", tid);
+
+    auto section_resp = retry_request(
+        [&]() {
+          return libtouchstone::authenticate(
+              tsession,
+              (base_url + "/mitpe/student/registration/sectionList").c_str(),
+              s_kerb.c_str(), s_kerb_password.c_str(), LIBTOUCHSTONE_OPTS);
+        },
+        fetch_tag, THREADED_RETRY, &got_section_id);
+
+    // If we got a good response and nobody else found the ID yet, extract it
+    if (!got_section_id.load() && !section_resp.error &&
+        section_resp.status_code == 200) {
+      auto maybe_id =
+          find_section_id(section_resp.text, s_pe_section_name);
+      if (maybe_id) {
+        std::lock_guard<std::mutex> lock(section_id_mutex);
+        if (!got_section_id.load()) {
+          shared_section_id = *maybe_id;
+          got_section_id.store(true);
+          printf("[%s] Found section ID: %s\n", tag,
+                 shared_section_id.c_str());
+        }
+      }
     }
-    return 1;
+
+    // Wait for section ID (another thread may have found it)
+    while (!got_section_id.load()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    std::string section_id;
+    {
+      std::lock_guard<std::mutex> lock(section_id_mutex);
+      section_id = shared_section_id;
+    }
+
+    // Phase 2: Submit registration
+    tsession.SetUrl(
+        cpr::Url{base_url + "/mitpe/student/registration/create"});
+    tsession.SetHeader(
+        cpr::Header{{"Content-Type", "application/x-www-form-urlencoded"},
+                     {"Origin", base_url},
+                     {"Referer", base_url +
+                                     "/mitpe/student/registration/section"
+                                     "?sectionId=" +
+                                     section_id}});
+    tsession.SetBody(cpr::Body{"sectionId=" + section_id +
+                                "&mitId=" + s_mit_id + "&wf="});
+
+    char reg_tag[32];
+    snprintf(reg_tag, sizeof(reg_tag), "T%d_REGISTER", tid);
+
+    auto reg_resp = retry_request([&]() { return tsession.Post(); }, reg_tag,
+                                  THREADED_RETRY, &registered);
+
+    if (!registered.load() && !reg_resp.error && reg_resp.status_code == 200) {
+      std::lock_guard<std::mutex> lock(registration_mutex);
+      if (!registered.load()) {
+        registered.store(true);
+        registration_response = reg_resp.text;
+        printf("[%s] REGISTERED!\n", tag);
+      }
+    }
+  };
+
+  printf("[INFO] Launching %d threads...\n", num_threads);
+
+  std::vector<std::thread> threads;
+  for (int i = 0; i < num_threads; i++) {
+    threads.emplace_back(worker, i);
   }
-  std::string section_id = *maybe_section_id;
+  for (auto &t : threads) {
+    t.join();
+  }
 
-  session.SetUrl(
-      cpr::Url{base_url + "/mitpe/student/registration/create"});
-  session.SetHeader(cpr::Header{
-      {"Content-Type", "application/x-www-form-urlencoded"},
-      {"Origin", base_url},
-      {"Referer",
-       base_url + "/mitpe/student/registration/section?sectionId=" +
-           section_id}});
-  session.SetBody(cpr::Body{"sectionId=" + section_id +
-                            "&mitId=" + std::getenv("MIT_ID") + "&wf="});
+  if (registered.load()) {
+    printf("\nRegistration successful! Response:\n%s\n",
+           registration_response.c_str());
+    return 0;
+  }
 
-  auto register_resp = retry_request([&]() { return session.Post(); },
-                                     "SUBMIT_REGISTRATION", RETRY_CONFIG);
-
-  printf("Success (status %ld)! Response:\n%s\n", register_resp.status_code,
-         register_resp.text.c_str());
-
-  return 0;
+  // This shouldn't happen since threads retry forever, but just in case
+  fprintf(stderr, "\nAll threads exited without successful registration.\n");
+  return 1;
 }

@@ -6,6 +6,7 @@ with configurable failure rates to test bot resilience.
 """
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 import random
 import time
 import argparse
@@ -118,7 +119,10 @@ def main():
         print(f"ERROR: Section list file not found: {SECTION_LIST_PATH}")
         return 1
 
-    server = HTTPServer(("localhost", args.port), MockPEHandler)
+    class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+        daemon_threads = True
+
+    server = ThreadingHTTPServer(("localhost", args.port), MockPEHandler)
     print(f"Mock PE server starting on http://localhost:{args.port}")
     print(f"Failure rate: {FAILURE_RATE*100:.0f}%, Slow rate: {SLOW_RATE*100:.0f}%")
     print(f"Section list: {SECTION_LIST_PATH}")

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cpr/cpr.h>
 #include <cstdio>
@@ -20,23 +21,38 @@ inline int calculate_delay(const RetryConfig &config) {
   return config.delay_ms + dis(gen);
 }
 
-// Retry wrapper for HTTP requests (retries forever until success)
-// Takes a function that performs the request and returns a cpr::Response
+// Retry wrapper for HTTP requests (retries forever until success or cancel)
+// Takes a function that performs the request and returns a cpr::Response.
+// If cancel is non-null and becomes true, returns the last response immediately.
 template <typename RequestFunc>
 cpr::Response retry_request(RequestFunc request_func, const char *request_name,
-                            const RetryConfig &config = RetryConfig{}) {
+                            const RetryConfig &config = RetryConfig{},
+                            std::atomic<bool> *cancel = nullptr) {
   cpr::Response resp;
   int attempt = 0;
 
   while (true) {
-    if (attempt > 0) {
+    if (cancel && cancel->load()) {
+      printf("[INFO] %s: Cancelled.\n", request_name);
+      return resp;
+    }
+
+    if (attempt > 0 && config.delay_ms > 0) {
       int delay = calculate_delay(config);
       printf("[INFO] %s: Attempt %d after %dms delay...\n", request_name,
              attempt + 1, delay);
       std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+    } else if (attempt > 0) {
+      printf("[INFO] %s: Attempt %d (immediate retry)...\n", request_name,
+             attempt + 1);
     }
 
     resp = request_func();
+
+    if (cancel && cancel->load()) {
+      printf("[INFO] %s: Cancelled.\n", request_name);
+      return resp;
+    }
 
     if (resp.status_code == 0) {
       printf("[WARN] %s: Network error - %s\n", request_name,
